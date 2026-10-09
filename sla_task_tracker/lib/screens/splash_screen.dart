@@ -4,9 +4,6 @@ import '../theme/app_colors.dart';
 import 'main_shell.dart';
 import 'sign_in_screen.dart';
 
-/// First screen shown. Initializes [DataStore] (loading persisted data,
-/// seeding demo data on first run) then routes to either the sign-in
-/// screen or straight into the app if "Remember me" restored a session.
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
 
