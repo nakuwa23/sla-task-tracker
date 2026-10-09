@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
-import '../models/team_member.dart';
-import '../services/data_store.dart';
 import '../theme/app_colors.dart';
 import '../utils/validators.dart';
-import 'main_shell.dart';
+import 'user_selection_screen.dart';
 
 class SignInScreen extends StatefulWidget {
   const SignInScreen({super.key});
@@ -14,47 +12,40 @@ class SignInScreen extends StatefulWidget {
 
 class _SignInScreenState extends State<SignInScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  TeamMember? _selectedMember;
   bool _rememberMe = true;
   bool _obscurePassword = true;
   bool _submitting = false;
 
   @override
-  void initState() {
-    super.initState();
-    final members = DataStore.instance.members;
-    if (members.isNotEmpty) _selectedMember = members.first;
-  }
-
-  @override
   void dispose() {
+    _emailController.dispose();
     _passwordController.dispose();
     super.dispose();
   }
 
   Future<void> _submit() async {
     final formValid = _formKey.currentState?.validate() ?? false;
-    if (!formValid || _selectedMember == null) {
-      if (_selectedMember == null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Select a work email to continue.')),
-        );
-      }
-      return;
-    }
+    if (!formValid) return;
 
     setState(() => _submitting = true);
     try {
-      await DataStore.instance.signIn(_selectedMember!, remember: _rememberMe);
       if (!mounted) return;
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (_) => const MainShell()),
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => UserSelectionScreen(
+            email: _emailController.text.trim(),
+            rememberMe: _rememberMe,
+          ),
+        ),
       );
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Something went wrong signing in. Please try again.')),
+        const SnackBar(
+            content:
+                Text('Something went wrong signing in. Please try again.')),
       );
     } finally {
       if (mounted) setState(() => _submitting = false);
@@ -63,8 +54,6 @@ class _SignInScreenState extends State<SignInScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final members = DataStore.instance.members;
-
     return Scaffold(
       body: SafeArea(
         child: SingleChildScrollView(
@@ -83,7 +72,8 @@ class _SignInScreenState extends State<SignInScreen> {
                         color: AppColors.primaryDark,
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(Icons.shield_outlined, color: Colors.white, size: 20),
+                      child: const Icon(Icons.shield_outlined,
+                          color: Colors.white, size: 20),
                     ),
                     const SizedBox(width: 10),
                     const Column(
@@ -91,11 +81,13 @@ class _SignInScreenState extends State<SignInScreen> {
                       children: [
                         Text(
                           'SLA Task Tracker',
-                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 15),
                         ),
                         Text(
                           'Tasks, tracked on time',
-                          style: TextStyle(fontSize: 11.5, color: AppColors.textSecondary),
+                          style: TextStyle(
+                              fontSize: 11.5, color: AppColors.textSecondary),
                         ),
                       ],
                     ),
@@ -109,7 +101,10 @@ class _SignInScreenState extends State<SignInScreen> {
                 const SizedBox(height: 8),
                 const Text(
                   'Sign in to monitor projects, resolve SLA risks, and keep your team moving.',
-                  style: TextStyle(color: AppColors.textSecondary, fontSize: 14, height: 1.4),
+                  style: TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 14,
+                      height: 1.4),
                 ),
                 const SizedBox(height: 20),
                 Container(
@@ -124,40 +119,36 @@ class _SignInScreenState extends State<SignInScreen> {
                     ),
                   ),
                   child: const Center(
-                    child: Icon(Icons.groups_2_outlined, color: Colors.white38, size: 56),
+                    child: Icon(Icons.groups_2_outlined,
+                        color: Colors.white38, size: 56),
                   ),
                 ),
                 const SizedBox(height: 22),
                 const Text('Work email',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
+                    style:
+                        TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
                 const SizedBox(height: 8),
-                DropdownButtonFormField<TeamMember>(
-                  initialValue: _selectedMember,
-                  isExpanded: true,
-                  icon: const Icon(Icons.expand_more_rounded),
+                TextFormField(
+                  controller: _emailController,
+                  keyboardType: TextInputType.emailAddress,
+                  textInputAction: TextInputAction.next,
                   decoration: const InputDecoration(
                     prefixIcon: Icon(Icons.mail_outline_rounded, size: 20),
+                    hintText: 'you@company.com',
                   ),
-                  items: [
-                    for (final m in members)
-                      DropdownMenuItem(
-                        value: m,
-                        child: Text(m.email, overflow: TextOverflow.ellipsis),
-                      ),
-                  ],
-                  onChanged: (value) => setState(() => _selectedMember = value),
-                  validator: (value) =>
-                      value == null ? 'Select a work email to continue' : null,
+                  validator: Validators.email,
                 ),
                 const SizedBox(height: 18),
                 const Text('Password',
-                    style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
+                    style:
+                        TextStyle(fontWeight: FontWeight.w600, fontSize: 13.5)),
                 const SizedBox(height: 8),
                 TextFormField(
                   controller: _passwordController,
                   obscureText: _obscurePassword,
                   decoration: InputDecoration(
-                    prefixIcon: const Icon(Icons.lock_outline_rounded, size: 20),
+                    prefixIcon:
+                        const Icon(Icons.lock_outline_rounded, size: 20),
                     suffixIcon: IconButton(
                       icon: Icon(
                         _obscurePassword
@@ -183,10 +174,12 @@ class _SignInScreenState extends State<SignInScreen> {
                         children: [
                           Checkbox(
                             value: _rememberMe,
-                            onChanged: (v) => setState(() => _rememberMe = v ?? false),
+                            onChanged: (v) =>
+                                setState(() => _rememberMe = v ?? false),
                             activeColor: AppColors.primaryDark,
                           ),
-                          const Text('Remember me', style: TextStyle(fontSize: 13.5)),
+                          const Text('Remember me',
+                              style: TextStyle(fontSize: 13.5)),
                         ],
                       ),
                     ),
@@ -195,7 +188,7 @@ class _SignInScreenState extends State<SignInScreen> {
                         ScaffoldMessenger.of(context).showSnackBar(
                           const SnackBar(
                             content: Text(
-                              'Not needed.',
+                              'Not needed — there is no real backend for this demo.',
                             ),
                           ),
                         );
@@ -225,12 +218,11 @@ class _SignInScreenState extends State<SignInScreen> {
                 ),
                 const SizedBox(height: 12),
                 Center(
-                  child: Text(
-                    members.isEmpty
-                        ? ''
-                        : 'Signing in as a demo team member — no password is checked.',
+                  child: const Text(
+                    'Demo sign-in — no password is checked.',
                     textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 11.5, color: AppColors.textMuted),
+                    style: const TextStyle(
+                        fontSize: 11.5, color: AppColors.textMuted),
                   ),
                 ),
               ],
