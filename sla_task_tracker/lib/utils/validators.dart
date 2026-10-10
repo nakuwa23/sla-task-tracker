@@ -1,5 +1,4 @@
-/// Shared form-validation rules. Each function returns `null` when the
-/// value is valid, or an error string to show under the field.
+
 class Validators {
   Validators._();
 
