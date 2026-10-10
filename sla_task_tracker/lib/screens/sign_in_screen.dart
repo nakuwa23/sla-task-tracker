@@ -118,9 +118,14 @@ class _SignInScreenState extends State<SignInScreen> {
                       end: Alignment.bottomRight,
                     ),
                   ),
-                  child: const Center(
-                    child: Icon(Icons.groups_2_outlined,
-                        color: Colors.white38, size: 56),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(16),
+                    child: Image.asset(
+                      'assets/images/sign_in_image.jpg',
+                      width: double.infinity,
+                      height: double.infinity,
+                      fit: BoxFit.cover,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 22),
