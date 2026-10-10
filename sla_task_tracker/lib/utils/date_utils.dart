@@ -1,6 +1,4 @@
-/// Small, dependency-free date helpers. We deliberately avoid the `intl`
-/// package here — the app only needs a couple of fixed formats, and
-/// hand-rolling them keeps the dependency list short and easy to explain.
+
 class AppDateUtils {
   AppDateUtils._();
 
