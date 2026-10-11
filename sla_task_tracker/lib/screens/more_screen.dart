@@ -136,6 +136,7 @@ class _MoreScreenState extends State<MoreScreen> {
               border: Border.all(color: AppColors.border),
             ),
             child: const Text(
+              'Tasks, team members, and activity are stored locally on this device.',
               style: TextStyle(color: AppColors.textSecondary, fontSize: 13, height: 1.5),
             ),
           ),
