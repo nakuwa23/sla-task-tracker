@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/app_colors.dart';
 
+Future<bool> showConfirmDialog(
   BuildContext context, {
   required String title,
   required String message,
