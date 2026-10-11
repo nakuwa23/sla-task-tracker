@@ -1,202 +1,58 @@
 import 'package:flutter/material.dart';
+import '../models/sla_status.dart';
 import '../models/team_member.dart';
 import '../services/data_store.dart';
+import '../services/sla_calculator.dart';
 import '../theme/app_colors.dart';
-import '../utils/date_utils.dart';
-import '../widgets/empty_state.dart';
-import '../widgets/initials_avatar.dart';
-import '../widgets/section_header.dart';
-import '../widgets/stat_card.dart';
-
-class DashboardScreen extends StatefulWidget {
-  const DashboardScreen({super.key});
-
-  @override
-  State<DashboardScreen> createState() => _DashboardScreenState();
-}
-
-class _DashboardScreenState extends State<DashboardScreen> {
-  Future<void> _refreshAfterReturn() async {
-    if (mounted) setState(() {});
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final store = DataStore.instance;
-    final activity = store.activityLog.take(4).toList();
-
-    return Scaffold(
-      appBar: AppBar(
-        automaticallyImplyLeading: false,
-        title: const Text('Project Dashboard'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.notifications_none_rounded),
-            onPressed: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('No new notifications.')),
-              );
-            },
-          ),
-        ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(22),
-          child: Padding(
-            padding: const EdgeInsets.only(left: 16, bottom: 10),
-            child: Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                store.currentUser != null
-                    ? '${store.currentUser!.team} · ${store.members.length} members'
-                    : 'Team overview',
-                style: const TextStyle(color: AppColors.textSecondary, fontSize: 13),
-              ),
-            ),
-          ),
-        ),
-      ),
-      body: RefreshIndicator(
-        onRefresh: _refreshAfterReturn,
-        child: ListView(
-          padding: const EdgeInsets.fromLTRB(16, 4, 16, 24),
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: StatCard(
-                    label: 'Active tasks',
-                    value: '${store.activeTasksCount}',
-                    dotColor: AppColors.onTrack,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: StatCard(
-                    label: 'SLA at risk',
-                    value: '${store.atRiskCount}',
-                    dotColor: AppColors.atRisk,
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: StatCard(
-                    label: 'Overdue',
-                    value: '${store.overdueCount}',
-                    dotColor: AppColors.overdue,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            _SlaHealthCard(store: store),
-            const SizedBox(height: 22),
-            SectionHeader(
-              title: 'Recent Activity',
-              actionLabel: 'View All',
-              onAction: () {
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: AppColors.surface,
-                  shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                  ),
-                  builder: (_) => _ActivityLogSheet(store: store),
-                );
-              },
-            ),
-            const SizedBox(height: 10),
-            if (activity.isEmpty)
-              const EmptyState(
-                icon: Icons.history_rounded,
-                title: 'No activity yet',
-                message: 'Task updates and completions will show up here.',
-              )
-            else
-              ...activity.map(
-                (entry) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        InitialsAvatar(
-                          member: _memberByName(store, entry.actorName),
-                          size: 36,
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Row(
-                                children: [
-                                  Expanded(
-                                    child: Text(
-                                      entry.actorName,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
-                                        fontSize: 13.5,
-                                      ),
-                                    ),
-                                  ),
-                                  Text(
-                                    AppDateUtils.timeAgo(entry.timestamp),
-                                    style: const TextStyle(
-                                      color: AppColors.textMuted,
-                                      fontSize: 11.5,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                entry.message,
-                                style: const TextStyle(
-                                  color: AppColors.textSecondary,
-                                  fontSize: 13,
-                                  height: 1.3,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-TeamMember? _memberByName(DataStore store, String name) {
-  for (final m in store.members) {
-    if (m.name == name) return m;
-  }
-  return null;
-}
 
 class _SlaHealthCard extends StatelessWidget {
   final DataStore store;
   const _SlaHealthCard({required this.store});
 
+  static const double _maxBarHeight = 110;
+
+  List<DateTime> _weekdays() {
+    final now = DateTime.now();
+    final monday = DateTime(now.year, now.month, now.day)
+        .subtract(Duration(days: now.weekday - 1));
+    return List.generate(5, (i) => monday.add(Duration(days: i)));
+  }
+
+  bool _isSameDay(DateTime a, DateTime b) =>
+      a.year == b.year && a.month == b.month && a.day == b.day;
+
+  /// Counts, by SLA status, of the tasks due on [day]. Completed tasks are
+  /// left out — the chart (matching the Figma) only tracks the three
+  /// "live" statuses.
+  _DayCounts _countsForDay(DateTime day) {
+    var onTrack = 0, atRisk = 0, overdue = 0;
+    for (final t in store.tasks) {
+      if (t.isCompleted) continue;
+      if (!_isSameDay(t.dueDate, day)) continue;
+      switch (SlaCalculator.statusFor(t)) {
+        case SlaStatus.onTrack:
+          onTrack++;
+          break;
+        case SlaStatus.atRisk:
+          atRisk++;
+          break;
+        case SlaStatus.overdue:
+          overdue++;
+          break;
+        case SlaStatus.completed:
+          break;
+      }
+    }
+    return _DayCounts(onTrack: onTrack, atRisk: atRisk, overdue: overdue);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final total = store.totalCount == 0 ? 1 : store.totalCount;
-    final onTrack = store.onTrackCount;
-    final atRisk = store.atRiskCount;
-    final overdue = store.overdueCount;
-    final completed = store.completedCount;
+    final days = _weekdays();
+    const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+    final dayCounts = [for (final day in days) _countsForDay(day)];
+    final maxTotal = dayCounts.fold<int>(0, (m, d) => d.total > m ? d.total : m);
+    final chartMax = maxTotal == 0 ? 4 : maxTotal;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -212,50 +68,82 @@ class _SlaHealthCard extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'SLA Breakdown',
+                'Weekly SLA Health',
                 style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
               ),
-              Text(
-                '${store.totalCount} total tasks',
-                style: const TextStyle(color: AppColors.textMuted, fontSize: 12),
+              InkWell(
+                borderRadius: BorderRadius.circular(20),
+                onTap: () {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Only the current week is shown in this demo.'),
+                    ),
+                  );
+                },
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: AppColors.background,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: AppColors.border),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text('This week',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600)),
+                      SizedBox(width: 4),
+                      Icon(Icons.expand_more_rounded, size: 14, color: AppColors.textMuted),
+                    ],
+                  ),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          Text(
-            '${(store.overallProgress * 100).round()}% of all tasks completed',
-            style: const TextStyle(color: AppColors.textSecondary, fontSize: 12.5),
-          ),
-          const SizedBox(height: 14),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(8),
-            child: SizedBox(
-              height: 14,
-              child: Row(
-                children: [
-                  if (onTrack > 0)
-                    Expanded(flex: onTrack, child: Container(color: AppColors.onTrack)),
-                  if (atRisk > 0)
-                    Expanded(flex: atRisk, child: Container(color: AppColors.atRisk)),
-                  if (overdue > 0)
-                    Expanded(flex: overdue, child: Container(color: AppColors.overdue)),
-                  if (completed > 0)
-                    Expanded(flex: completed, child: Container(color: AppColors.completed)),
-                  if (onTrack + atRisk + overdue + completed == 0)
-                    Expanded(flex: total, child: Container(color: AppColors.border)),
-                ],
+          const SizedBox(height: 18),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              SizedBox(
+                height: _maxBarHeight,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text('$chartMax',
+                        style: const TextStyle(fontSize: 10, color: AppColors.textMuted)),
+                    Text('${(chartMax / 2).round()}',
+                        style: const TextStyle(fontSize: 10, color: AppColors.textMuted)),
+                    const Text('0', style: TextStyle(fontSize: 10, color: AppColors.textMuted)),
+                  ],
+                ),
               ),
-            ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    for (var i = 0; i < days.length; i++)
+                      _WeekdayBar(
+                        label: dayLabels[i],
+                        counts: dayCounts[i],
+                        maxTotal: chartMax,
+                        maxBarHeight: _maxBarHeight,
+                      ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 14),
-          Wrap(
+          const SizedBox(height: 16),
+          const Wrap(
             spacing: 16,
             runSpacing: 8,
             children: [
-              _LegendDot(color: AppColors.onTrack, label: 'On Track ($onTrack)'),
-              _LegendDot(color: AppColors.atRisk, label: 'At Risk ($atRisk)'),
-              _LegendDot(color: AppColors.overdue, label: 'Overdue ($overdue)'),
-              _LegendDot(color: AppColors.completed, label: 'Completed ($completed)'),
+              _LegendDot(color: AppColors.onTrack, label: 'On Track'),
+              _LegendDot(color: AppColors.atRisk, label: 'At Risk'),
+              _LegendDot(color: AppColors.overdue, label: 'Overdue'),
             ],
           ),
         ],
@@ -264,102 +152,73 @@ class _SlaHealthCard extends StatelessWidget {
   }
 }
 
-class _LegendDot extends StatelessWidget {
-  final Color color;
-  final String label;
-  const _LegendDot({required this.color, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(color: color, shape: BoxShape.circle),
-        ),
-        const SizedBox(width: 6),
-        Text(label, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-      ],
-    );
-  }
+/// Counts of not-yet-completed tasks due on one calendar day, split by
+/// current SLA status. Used only to draw one bar of the weekly chart.
+class _DayCounts {
+  final int onTrack;
+  final int atRisk;
+  final int overdue;
+  const _DayCounts({required this.onTrack, required this.atRisk, required this.overdue});
+  int get total => onTrack + atRisk + overdue;
 }
 
-class _ActivityLogSheet extends StatelessWidget {
-  final DataStore store;
-  const _ActivityLogSheet({required this.store});
+/// One stacked bar + weekday label in the "Weekly SLA Health" chart.
+class _WeekdayBar extends StatelessWidget {
+  final String label;
+  final _DayCounts counts;
+  final int maxTotal;
+  final double maxBarHeight;
+
+  const _WeekdayBar({
+    required this.label,
+    required this.counts,
+    required this.maxTotal,
+    required this.maxBarHeight,
+  });
+
+  double _segmentHeight(int count) {
+    if (maxTotal <= 0 || count <= 0) return 0;
+    return (count / maxTotal) * maxBarHeight;
+  }
 
   @override
   Widget build(BuildContext context) {
-    return DraggableScrollableSheet(
-      initialChildSize: 0.75,
-      minChildSize: 0.4,
-      maxChildSize: 0.92,
-      expand: false,
-      builder: (context, scrollController) {
-        return Column(
-          children: [
-            const SizedBox(height: 10),
-            Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: AppColors.border,
-                borderRadius: BorderRadius.circular(4),
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: Text('All Activity',
-                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 17)),
-            ),
-            Expanded(
-              child: store.activityLog.isEmpty
-                  ? const EmptyState(
-                      icon: Icons.history_rounded,
-                      title: 'No activity yet',
-                      message: 'Task updates and completions will show up here.',
-                    )
-                  : ListView.separated(
-                      controller: scrollController,
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: store.activityLog.length,
-                      separatorBuilder: (_, __) => const Divider(height: 20),
-                      itemBuilder: (context, i) {
-                        final entry = store.activityLog[i];
-                        return Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Expanded(
-                              child: RichText(
-                                text: TextSpan(
-                                  style: const TextStyle(
-                                      color: AppColors.textPrimary, fontSize: 13.5),
-                                  children: [
-                                    TextSpan(
-                                      text: '${entry.actorName} ',
-                                      style: const TextStyle(fontWeight: FontWeight.w700),
-                                    ),
-                                    TextSpan(text: entry.message),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              AppDateUtils.timeAgo(entry.timestamp),
-                              style: const TextStyle(
-                                  color: AppColors.textMuted, fontSize: 11),
-                            ),
-                          ],
-                        );
-                      },
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        SizedBox(
+          height: maxBarHeight,
+          width: 22,
+          child: counts.total == 0
+              ? const Align(
+                  alignment: Alignment.bottomCenter,
+                  child: SizedBox(
+                    height: 4,
+                    width: 22,
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(color: AppColors.border),
                     ),
-            ),
-          ],
-        );
-      },
+                  ),
+                )
+              : Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Container(height: _segmentHeight(counts.overdue), color: AppColors.overdue),
+                    Container(height: _segmentHeight(counts.atRisk), color: AppColors.atRisk),
+                    Container(height: _segmentHeight(counts.onTrack), color: AppColors.onTrack),
+                  ],
+                ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          label,
+          style: const TextStyle(
+            fontSize: 11,
+            color: AppColors.textMuted,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
     );
   }
 }
