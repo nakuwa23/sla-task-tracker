@@ -11,11 +11,11 @@ class _SlaHealthCard extends StatelessWidget {
 
   static const double _maxBarHeight = 110;
 
+ 
   List<DateTime> _weekdays() {
-    final now = DateTime.now();
-    final monday = DateTime(now.year, now.month, now.day)
-        .subtract(Duration(days: now.weekday - 1));
-    return List.generate(5, (i) => monday.add(Duration(days: i)));
+    final today = DateTime.now();
+    final start = DateTime(today.year, today.month, today.day);
+    return List.generate(5, (i) => start.add(Duration(days: i)));
   }
 
   bool _isSameDay(DateTime a, DateTime b) =>
@@ -48,12 +48,10 @@ class _SlaHealthCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final days = _weekdays();
-    const dayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
+        final days = _weekdays();
+    const weekdayLabels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final dayLabels = [for (final d in days) weekdayLabels[d.weekday - 1]];
     final dayCounts = [for (final day in days) _countsForDay(day)];
-    final maxTotal = dayCounts.fold<int>(0, (m, d) => d.total > m ? d.total : m);
-    final chartMax = maxTotal == 0 ? 4 : maxTotal;
-
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
